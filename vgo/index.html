@@ -1,0 +1,195 @@
+<html>
+
+<head>
+    <title>VGO Inventory Scanner</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.1/css/bulma.min.css" integrity="sha256-zIG416V1ynj3Wgju/scU80KAEWOsO5rRLfVyRDuOv7Q=" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.1.1/css/all.css" integrity="sha384-O8whS3fhG2OnA5Kas0Y9l3cfpmYjapjI0E4theH4iuMD+pLhbf6JI0jIMfYcK3yZ" crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.16/vue.js" integrity="sha256-CMMTrj5gGwOAXBeFi7kNokqowkzbeL8ydAJy39ewjkQ=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue-resource/1.5.1/vue-resource.min.js" integrity="sha256-e9WxLR4DOP5XKMT4mflXVovZS4mVdiMkAFSDHF+6q80=" crossorigin="anonymous"></script>
+    <style type="text/css">
+    .noselect {
+        -webkit-touch-callout: none;
+        /* iOS Safari */
+        -webkit-user-select: none;
+        /* Safari */
+        -khtml-user-select: none;
+        /* Konqueror HTML */
+        -moz-user-select: none;
+        /* Firefox */
+        -ms-user-select: none;
+        /* Internet Explorer/Edge */
+        user-select: none;
+        /* Non-prefixed version, currently supported by Chrome and Opera */
+    }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="notification">
+                <strong>VGO</strong> Inventory Scanner
+            </div>
+            <div class="columns">
+                <div class="column is-three-fifths is-offset-one-fifth">
+                    <div class="field">
+                        <p class="control has-icons-left has-icons-right">
+                            <input class="input" type="text" placeholder="OPSkins API Key" v-model="search.apikey">
+                            <span class="icon is-small is-left">
+                                <i class="fas fa-key"></i>
+                            </span>
+                            <span class="icon is-small is-right">
+                                <i class="fas fa-check"></i>
+                            </span>
+                        </p>
+                    </div>
+                    <div class="field">
+                        <p class="control has-icons-left">
+                            <input class="input" type="text" placeholder="User's SteamID" v-model="search.steamid">
+                            <span class="icon is-small is-left">
+                                <i class="fas fa-user"></i>
+                            </span>
+                        </p>
+                    </div>
+                    <a :class="['noselect', 'button', 'is-primary', {'is-loading': search.isLoading}]" @click="fetch()">Fetch VGO Inventory</a>
+                    <div class="noselect" style="display: inline; margin-left: 20px">
+                        <label class="checkbox">
+                            <input type="checkbox" v-model="filters.aboveOneDollar"> Hide skins less than $1
+                        </label>
+                        <label class="checkbox" style="margin-left: 20px">
+                            <input type="checkbox" v-model="filters.hideKeys"> Hide keys
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <hr>
+        <div class="container" style="margin-top: 50px;">
+            <nav class="level">
+                <div class="level-item has-text-centered">
+                    <div>
+                        <p class="heading">Items Count</p>
+                        <p class="title">{{ filteredSkins.length }}</p>
+                    </div>
+                </div>
+                <div class="level-item has-text-centered">
+                    <div>
+                        <p class="heading">Average Value</p>
+                        <p class="title">{{ getSkinsValue() }}$</p>
+                    </div>
+                </div>
+            </nav>
+            <div class="container" style="margin-top: 50px;">
+                <div class="columns is-mobile is-multiline">
+                    <div class="column is-one-fifth" v-for="skin of filteredSkins">
+                        <div class="card">
+                            <header class="card-header">
+                                <p class="card-header-title">
+                                    {{ skin.name }}
+                                </p>
+                            </header>
+                            <div class="card-content">
+                                <figure class="image is-square" @click="showPreview(skin)">
+                                    <img :src="skin.image['300px']">
+                                </figure>
+                                <p class="has-text-centered" :style="{color: skin.color}">{{ skin.category }}</p>
+                                <progress class="progress is-small" :value="skin.wear * 100" max="100">Wear: {{ skin.wear }}</progress>
+                                <div class="notification">
+                                    Price: {{ skin.price }}$
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal" :class="['modal', {'is-active': previewModal.isActive}]">
+            <div class="modal-background"></div>
+            <div class="modal-content">
+                <p class="image">
+                    <video preload="metadata" autoPlay="false" loop="true" :play="previewModal.isActive" :src="previewModal.video">
+                </p>
+            </div>
+            <button class="modal-close is-large" aria-label="close" @click="previewModal.isActive = false"></button>
+        </div>
+    </div>
+    <script type="text/javascript">
+    var app = new Vue({
+        el: '#app',
+        data: {
+            search: {
+                steamid: '',
+                apikey: '',
+                isLoading: false
+            },
+            filters: {
+                aboveOneDollar: false,
+                hideKeys: false
+            },
+            previewModal: {
+                isActive: false,
+                video: ''
+            },
+            fetchedSkins: []
+        },
+        computed: {
+            filteredSkins() {
+                return this.fetchedSkins.filter(x => {
+                    if (this.filters.aboveOneDollar && x.price < 1) {
+                        return false
+                    }
+                    if (this.filters.hideKeys && x.category == 'VGO Key') {
+                        return false
+                    }
+                    return true
+                })
+            }
+        },
+        mounted() {
+            const apikey = localStorage.getItem('apikey')
+            if (apikey) {
+                this.search.apikey = apikey
+            }
+        },
+        methods: {
+            async fetch() {
+                const queryObjects = {
+                    steam_id: this.search.steamid,
+                    app_id: 1,
+                    sort: 6,
+                    key: this.search.apikey
+                }
+                let reqUrl = Object.keys(queryObjects)
+                    .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(queryObjects[k]))
+                    .join('&')
+                reqUrl = 'https://api-trade.opskins.com/ITrade/GetUserInventoryFromSteamId/v1/?' + reqUrl
+                reqUrl = 'https://cors-anywhere.herokuapp.com/' + reqUrl
+
+                this.search.isLoading = true
+                const response = await this.$http.get(reqUrl)
+
+                for (const skin of response.body.response.items) {
+                    skin.price = parseFloat((skin.suggested_price / 100).toFixed(2))
+                    this.fetchedSkins.push(skin)
+                }
+
+                localStorage.setItem('apikey', this.search.apikey)
+                this.search.isLoading = false
+            },
+            showPreview(item) {
+                this.previewModal.video = item.preview_urls.video
+                this.previewModal.isActive = true
+            },
+            getSkinsValue() {
+                let value = 0
+                for (const skin of this.fetchedSkins) {
+                    value += skin.price
+                }
+                return value.toFixed(2)
+            }
+        }
+    })
+    </script>
+</body>
+
+</html>
