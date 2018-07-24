@@ -51,6 +51,7 @@
                             </span>
                         </p>
                     </div>
+                    <div class="notification is-danger" v-if="message">{{ message }}</div>
                     <a :class="['noselect', 'button', 'is-primary', {'is-loading': search.isLoading}]" @click="fetch()">Fetch VGO Inventory</a>
                     <div class="noselect" style="display: inline; margin-left: 20px">
                         <label class="checkbox">
@@ -117,6 +118,7 @@
     var app = new Vue({
         el: '#app',
         data: {
+            message: false,
             search: {
                 steamid: '',
                 apikey: '',
@@ -166,14 +168,31 @@
                 reqUrl = 'https://cors-anywhere.herokuapp.com/' + reqUrl
 
                 this.search.isLoading = true
-                const response = await this.$http.get(reqUrl)
+                try {
+                    const response = await this.$http.get(reqUrl)
 
-                for (const skin of response.body.response.items) {
-                    skin.price = parseFloat((skin.suggested_price / 100).toFixed(2))
-                    this.fetchedSkins.push(skin)
+                    this.fetchedSkins = []
+
+                    for (const skin of response.body.response.items) {
+                        skin.price = parseFloat((skin.suggested_price / 100).toFixed(2))
+                        this.fetchedSkins.push(skin)
+                    }
+
+                    localStorage.setItem('apikey', this.search.apikey)
+                } catch (error) {
+                    console.error(error)
+                    setTimeout(() => this.message = '', 5000)
+
+                    if (error.body.message) {
+                        this.message = error.body.message
+                    }
+                    else if (error.body) {
+                        this.message = error.body
+                    }
+                    else if (error.message) {
+                        this.message = error.message
+                    }
                 }
-
-                localStorage.setItem('apikey', this.search.apikey)
                 this.search.isLoading = false
             },
             showPreview(item) {
